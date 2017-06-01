@@ -2,7 +2,7 @@
 <html>
 	<head>
 		<title>FastDom: Animation Example</title>
-		<script type="text/javascript" src="../fastdom.min.js"></script>
+		<script type="text/javascript" src="../fastdom.js"></script>
 	</head>
 	<body>
 
@@ -80,7 +80,9 @@
 				for (var m = 0; m < movers.length; m++) {
 					mover[moveMethod](m);
 				}
-				raf = window.requestAnimationFrame(update);
+				fastdom.onFinished(function () {
+					raf = window.requestAnimationFrame(update);
+				});
 			}
 
 			function toggleAnim(e) {

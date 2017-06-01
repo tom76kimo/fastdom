@@ -40,6 +40,7 @@ function FastDom() {
   var self = this;
   self.reads = [];
   self.writes = [];
+  self.finishedCallback = [];
   self.raf = raf.bind(win); // test hook
   debug('initialized', self);
 }
@@ -75,6 +76,12 @@ FastDom.prototype = {
     var task = !ctx ? fn : fn.bind(ctx);
     this.writes.push(task);
     scheduleFlush(this);
+    return task;
+  },
+
+  onFinished: function(fn, ctx) {
+    var task = !ctx ? fn : fn.bind(ctx);
+    this.finishedCallback.push(task);
     return task;
   },
 
@@ -167,26 +174,32 @@ function scheduleFlush(fastdom) {
  *
  * @private
  */
-function flush(fastdom) {
+function flush(fastdom, startTime) {
   debug('flush');
 
   var writes = fastdom.writes;
   var reads = fastdom.reads;
   var error;
+  var callbackTask;
 
   try {
     debug('flushing reads', reads.length);
-    runTasks(reads);
+    runTasks(reads, startTime);
     debug('flushing writes', writes.length);
-    runTasks(writes);
-  } catch (e) { error = e; }
+    runTasks(writes, startTime);
+  } catch (e) {
+    error = e;
+  }
 
   fastdom.scheduled = false;
 
   // If the batch errored we may still have tasks queued
   if (reads.length || writes.length) scheduleFlush(fastdom);
+  else {
+    while(callbackTask = fastdom.finishedCallback.shift()) callbackTask();
+  }
 
-  if (error) {
+  if (error && error !== 'timeout') {
     debug('task errored', error.message);
     if (fastdom.catch) fastdom.catch(error);
     else throw error;
@@ -201,9 +214,22 @@ function flush(fastdom) {
  *
  * @private
  */
-function runTasks(tasks) {
+function runTasks(tasks, startTime) {
   debug('run tasks');
-  var task; while (task = tasks.shift()) task();
+  var task;
+  var executeTime;
+  do {
+    if (!tasks || !tasks.length) {
+      break;
+    }
+    task = tasks.shift();
+    task();
+    executeTime = window.performance.now() - startTime;
+  } while (executeTime < 16);
+
+  if (executeTime >= 16) {
+    throw 'timeout';
+  }
 }
 
 /**
